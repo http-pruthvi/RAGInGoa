@@ -80,6 +80,11 @@ def run_evaluation(
         status_icon = "✓" if response.status == PipelineStatus.SUCCESS else "✗"
         logger.info(f"  {status_icon} {response.status.value} ({total_ms:.1f}ms)")
 
+        # Rate-limiting delay between queries so the benchmark harness doesn't trigger Groq limits
+        if i < len(queries) - 1:
+            import time
+            time.sleep(1.5)
+
     return all_timings, results_summary
 
 

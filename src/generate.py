@@ -51,10 +51,9 @@ _SYSTEM_PROMPT = """You are a helpful assistant that answers questions ONLY base
 6. Keep your answers concise (1-3 sentences) and directly relevant to the question asked."""
 
 
-# Groq-hosted model — LLaMA 3.3 70B offers the best quality/speed tradeoff
-# on Groq's free tier. 70B params gives strong instruction-following, and
-# Groq's LPU hardware keeps inference latency low (~200-500ms).
-_MODEL = "llama-3.3-70b-versatile"
+# Groq-hosted model — LLaMA 3.1 8B Instant provides lightning-fast inference (~200-400ms)
+# and a 500k TPD quota (5x higher than 70B), preventing rate-limit throttling during evaluation.
+_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 def _get_api_key() -> str:
@@ -81,16 +80,18 @@ def _get_client() -> Groq:
     return _groq_client
 
 
-def _format_context(chunks: List[Chunk]) -> str:
-    """Format retrieved chunks as numbered context snippets for the prompt.
+def _format_context(chunks: List[Chunk], max_chunks: int = 3) -> str:
+    """Format top retrieved chunks as compact numbered context snippets for the prompt.
 
-    Uses context_text (the richer version) rather than the embedding text,
-    so the model sees full parent chunks or sentence-window context.
+    Limits to top 3 chunks and truncates long passages to prevent exceeding
+    Groq free tier token limits (TPM).
     """
     parts = []
-    for i, chunk in enumerate(chunks, 1):
-        # Use context_text for generation — it has the broader context
+    for i, chunk in enumerate(chunks[:max_chunks], 1):
         text = chunk.context_text if chunk.context_text else chunk.text
+        words = text.split()
+        if len(words) > 150:
+            text = " ".join(words[:150]) + "..."
         parts.append(f"[{i}] {text}")
     return "\n\n".join(parts)
 
@@ -115,7 +116,7 @@ def generate_answer(
     """
     client = _get_client()
 
-    context = _format_context(chunks)
+    context = _format_context(chunks, max_chunks=3)
 
     user_message = f"""Context passages:
 {context}
@@ -124,14 +125,14 @@ Question: {query}
 
 Answer the question using ONLY the context passages above. Cite the passage number(s) you used."""
 
-    last_error = None
+    last_error = "Unknown error"
 
     for attempt in range(max_retries + 1):
         try:
             # Groq uses the OpenAI-compatible chat.completions.create interface
             response = client.chat.completions.create(
                 model=_MODEL,
-                max_tokens=1024,
+                max_tokens=256,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
@@ -147,7 +148,8 @@ Answer the question using ONLY the context passages above. Cite the passage numb
 
             # Rate limit errors (429) are retryable
             if "429" in error_str or "rate" in error_str.lower():
-                last_error = f"Rate limited: {e}"
+                last_error = f"Rate limited (429): {e}"
+                time.sleep(2.0)  # Extra backoff on 429
             # Server errors (5xx) are retryable
             elif "500" in error_str or "502" in error_str or "503" in error_str:
                 last_error = f"Server error: {e}"
@@ -158,10 +160,10 @@ Answer the question using ONLY the context passages above. Cite the passage numb
                 # Non-retryable errors (auth, bad request, etc.)
                 raise GenerationError(f"Groq API error: {e}")
 
-        logger.warning(f"Groq API attempt {attempt + 1} failed: {e}. Retrying...")
-        # Backoff before retry
-        if attempt < max_retries:
-            time.sleep(1.0)
+            logger.warning(f"Groq API attempt {attempt + 1} failed: {last_error}. Retrying...")
+            # Backoff before retry
+            if attempt < max_retries:
+                time.sleep(1.0)
 
     raise GenerationError(
         f"Generation failed after {max_retries + 1} attempts. "
