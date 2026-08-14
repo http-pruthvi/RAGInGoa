@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+eval/latency_report*.json
+eval/audio/
