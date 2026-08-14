@@ -32,7 +32,7 @@ class STTResult:
 
 # -- Configuration --
 _SARVAM_STT_URL = "https://api.sarvam.ai/speech-to-text"
-_SARVAM_MODEL = "saarika:v2"
+_SARVAM_MODEL = os.environ.get("SARVAM_MODEL", "saarika:v2.5")
 _MAX_RETRIES = 2
 # Backoff schedule: 0.5s after first failure, 1.0s after second
 _BACKOFF_SECONDS = [0.5, 1.0]

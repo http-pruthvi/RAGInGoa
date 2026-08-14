@@ -87,8 +87,9 @@ class HybridRetriever:
             self.bm25: BM25Okapi = pickle.load(f)
 
         # Warm up the embedding model and Qdrant connection to eliminate cold-start latency
-        # We discard the result. The first query forces model JIT and connection pool creation.
-        _ = self.search("warmup query", top_k=1, dense_candidates=5, sparse_candidates=5)
+        # Two warmup passes (English and Indic) ensure tokenizer cache, PyTorch CPU threads, and Qdrant caches are warm
+        _ = self.search("warmup query", top_k=5, dense_candidates=20, sparse_candidates=20)
+        _ = self.search("वार्मअप प्रश्न", top_k=5, dense_candidates=20, sparse_candidates=20)
 
     def search(
         self,

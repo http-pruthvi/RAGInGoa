@@ -6,8 +6,8 @@ Provides three endpoints:
 - POST /query/text: Text-only pipeline (skips STT, for testing/eval)
 - GET /health: Health check
 
-The embedding model, FAISS index, and BM25 index are loaded once at startup
-via the lifespan context manager, not per-request. This avoids the ~3s model
+The embedding model, Qdrant vector database, and BM25 index are loaded once at startup
+via the lifespan context manager, not per-request. This avoids the model
 load penalty on every query.
 """
 
@@ -43,8 +43,8 @@ _pipeline: Optional[RAGPipeline] = None
 async def lifespan(app: FastAPI):
     """Load models and indices once at startup, release on shutdown.
 
-    This avoids the ~3s model load and ~1s index load on every request.
-    The FAISS index, BM25 index, and embedding model stay in memory
+    This avoids the model load and index load on every request.
+    The Qdrant index, BM25 index, and embedding model stay in memory
     for the lifetime of the server process.
     """
     global _pipeline
@@ -55,9 +55,10 @@ async def lifespan(app: FastAPI):
     logger.info("Loading retrieval indices...")
     data_dir = os.environ.get("INDEX_DIR", "data")
     retriever = HybridRetriever(index_dir=data_dir)
+    collection_info = retriever.qdrant.get_collection(retriever.collection_name)
     logger.info(
-        f"Loaded {retriever.faiss_index.ntotal} vectors, "
-        f"{len(retriever.chunks)} chunks"
+        f"Loaded Qdrant collection '{retriever.collection_name}' with "
+        f"{collection_info.points_count} vectors"
     )
 
     _pipeline = RAGPipeline(retriever=retriever)
@@ -113,10 +114,13 @@ async def health_check():
             status_code=503,
             content={"status": "not_ready", "message": "Pipeline not initialized"}
         )
+    collection_info = _pipeline.retriever.qdrant.get_collection(
+        _pipeline.retriever.collection_name
+    )
     return {
         "status": "healthy",
-        "index_size": _pipeline.retriever.faiss_index.ntotal,
-        "chunks_loaded": len(_pipeline.retriever.chunks),
+        "vector_count": collection_info.points_count,
+        "collection_name": _pipeline.retriever.collection_name,
     }
 
 
@@ -207,15 +211,14 @@ async def query_voice(
 def _status_to_http(status: PipelineStatus) -> int:
     """Map PipelineStatus enum to HTTP status codes.
 
-    Successful queries return 200. Refusals return 200 with the refusal
-    reason in the response body (the client asked a valid question, the
-    system just can't answer it — that's not an HTTP error).
-    Actual errors (STT failure, internal errors) return 500.
+    Successful queries and safe refusals return 200.
+    Actual errors (STT failure, internal errors) return 500/502.
     """
     if status in (
         PipelineStatus.SUCCESS,
         PipelineStatus.REFUSED_BAD_INPUT,
         PipelineStatus.REFUSED_NO_MATCH,
+        PipelineStatus.REFUSED_BY_MODEL,
         PipelineStatus.REFUSED_UNGROUNDED,
     ):
         return 200
