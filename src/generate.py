@@ -69,14 +69,15 @@ def _get_api_key() -> str:
 
 # Module-level Groq client cache to reuse HTTP connection pooling across requests
 _groq_client: Optional[Groq] = None
+_cached_key: Optional[str] = None
 
 def _get_client() -> Groq:
     """Return a cached Groq client with a 4.0s timeout."""
-    global _groq_client
-    if _groq_client is None:
-        api_key = _get_api_key()
-        # 4.0s timeout bounds the P100 latency outlier
+    global _groq_client, _cached_key
+    api_key = _get_api_key()
+    if _groq_client is None or _cached_key != api_key:
         _groq_client = Groq(api_key=api_key, timeout=4.0)
+        _cached_key = api_key
     return _groq_client
 
 
