@@ -205,26 +205,32 @@ class RAGPipeline:
         # -- Stage 5.5: Check if model explicitly refused to answer --
         _REFUSAL_PATTERNS = [
             "i don't have enough information",
-            "not enough information",
-            "does not contain enough information",
-            "no information provided",
+            "not enough information in the provided context",
+            "does not contain enough information to answer",
+            "no information provided in the context",
             "पर्याप्त जानकारी नहीं",
-            "जानकारी प्रदान नहीं",
+            "जानकारी प्रदान नहीं की गई",
             "जानकारी नहीं दी गई",
             "जानकारी उपलब्ध नहीं",
-            "कोई जानकारी नहीं",
+            "कोई जानकारी नहीं दी गई",
             "पर्याप्त जानकारी नहीं है",
             "पर्याप्त जानकारी नहीं ढूंढ",
-            "उल्लेख नहीं किया",
+            "उल्लेख नहीं किया गया",
             "उल्लेख नहीं है",
-            "नहीं बताया गया",
-            "उत्तर देने के लिए पर्याप्त",
+            "नहीं बताया गया है",
+            "उत्तर देने के लिए पर्याप्त जानकारी नहीं",
             "उत्तर देने में असमर्थ",
             "উত্তর দেওয়ার জন্য পর্যাপ্ত তথ্য নেই",
             "போதுமான தகவல் இல்லை",
         ]
-        ans_lower = answer.lower()
-        if any(pat in ans_lower or pat in answer for pat in _REFUSAL_PATTERNS):
+        ans_lower = answer.lower().strip()
+        # Full refusal if it starts with refusal or if short refusal statement
+        is_refusal = any(pat in ans_lower or pat in answer for pat in _REFUSAL_PATTERNS)
+        # If it contains citations [1] or [2] and starts with a substantive statement, don't override to refusal
+        if is_refusal and ("[" in answer and "]" in answer) and not any(ans_lower.startswith(p) for p in _REFUSAL_PATTERNS):
+            is_refusal = False
+
+        if is_refusal:
             return PipelineResponse(
                 status=PipelineStatus.REFUSED_BY_MODEL,
                 query_text=query_text,

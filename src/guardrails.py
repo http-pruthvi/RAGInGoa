@@ -221,7 +221,7 @@ def _extract_content_words(text: str) -> Set[str]:
 def check_grounding(
     generated_answer: str,
     context_text: str,
-    threshold: float = 0.55,
+    threshold: float = 0.45,
 ) -> GuardrailResult:
     """Verify the generated answer is grounded in the retrieved context.
 

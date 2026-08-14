@@ -80,11 +80,11 @@ def _get_client() -> Groq:
     return _groq_client
 
 
-def _format_context(chunks: List[Chunk], max_chunks: int = 3) -> str:
+def _format_context(chunks: List[Chunk], max_chunks: int = 5) -> str:
     """Format top retrieved chunks as compact numbered context snippets for the prompt.
 
-    Limits to top 3 chunks and truncates long passages to prevent exceeding
-    Groq free tier token limits (TPM).
+    Includes up to top 5 chunks and compacts text to provide comprehensive coverage
+    while staying well within token quotas.
     """
     parts = []
     for i, chunk in enumerate(chunks[:max_chunks], 1):

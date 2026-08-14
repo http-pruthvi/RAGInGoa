@@ -17,7 +17,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -163,7 +163,7 @@ async def query_text(request: TextQueryRequest):
 @app.post("/query/voice", response_model=QueryResponse)
 async def query_voice(
     audio: UploadFile = File(...),
-    language: str = "hi-IN",
+    language: str = Form("hi-IN"),
 ):
     """Voice-based query endpoint — full pipeline including STT.
 
