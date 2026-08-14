@@ -62,8 +62,8 @@ def _split_into_sentences(text: str) -> List[str]:
     Indic scripts use '।' (Devanagari danda) as sentence terminator.
     """
     # Split on sentence-ending punctuation followed by whitespace or end of string
-    # Also handle Devanagari danda (।) used in Hindi, Sanskrit, etc.
-    parts = re.split(r'(?<=[.!?।])\s+', text.strip())
+    # Handles . ! ? as well as Devanagari/Bengali danda (।), double danda (॥), and Urdu question mark (؟)
+    parts = re.split(r'(?<=[.!?।॥؟])\s+', text.strip())
     # Filter out empty strings and very short fragments
     return [s.strip() for s in parts if s.strip() and len(s.strip()) > 2]
 

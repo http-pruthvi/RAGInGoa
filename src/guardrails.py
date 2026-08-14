@@ -16,8 +16,9 @@ The three gates:
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Set
 
 
 @dataclass
@@ -32,9 +33,14 @@ class GuardrailResult:
     reason: str = ""
 
 
-# -- Common stop words to exclude from grounding overlap checks --
-# These are too common to be meaningful evidence of grounding
+# ---------------------------------------------------------------------------
+# Language-agnostic stopword list
+# ---------------------------------------------------------------------------
+# Function words too common to signal grounding. Covers English + 13 Indic
+# languages in MSMARCO-XI. For Indic languages, these are high-frequency
+# postpositions, auxiliaries, pronouns, and conjunctions.
 _STOP_WORDS = frozenset({
+    # --- English ---
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
     "have", "has", "had", "do", "does", "did", "will", "would", "could",
     "should", "may", "might", "can", "shall", "must", "need",
@@ -48,10 +54,46 @@ _STOP_WORDS = frozenset({
     "under", "again", "further", "once", "here", "there", "all", "each",
     "every", "both", "few", "more", "most", "other", "some", "such",
     "only", "own", "same",
-    # Common Hindi stop words (transliterated and Devanagari)
-    "का", "के", "की", "है", "में", "से", "को", "पर", "इस", "ने",
-    "और", "एक", "यह", "नहीं", "कि", "हैं", "तो", "या", "भी",
+    # --- Hindi / Marathi / Nepali / Sanskrit (Devanagari) ---
+    "का", "के", "की", "है", "हैं", "में", "से", "को", "पर", "इस",
+    "ने", "और", "एक", "यह", "वह", "नहीं", "कि", "तो", "या", "भी",
+    "था", "थी", "थे", "हो", "होता", "जो", "इसका", "उसका", "अपने",
+    "कर", "जा", "आ", "ये", "वो", "मैं", "तुम", "हम", "उन", "इन",
+    "पहले", "बाद", "लिए", "साथ", "सब", "कुछ", "बहुत", "अब", "जब",
+    # --- Bengali (Bangla) ---
+    "এই", "এটি", "একটি", "এবং", "তা", "তার", "যে", "হয়", "করে",
+    "থেকে", "জন্য", "সাথে", "বা", "না", "তবে", "আর", "নয়", "ও",
+    # --- Tamil ---
+    "இது", "அது", "ஒரு", "என்று", "மற்றும்", "இல்லை", "உள்ள",
+    "என்ற", "பல", "அல்லது", "போன்ற", "கொண்ட", "செய்",
+    # --- Telugu ---
+    "ఈ", "ఆ", "ఒక", "మరియు", "లేదా", "కాదు", "అది", "ఇది",
+    "వారు", "అతను", "ఆమె", "మేము",
+    # --- Gujarati ---
+    "આ", "એ", "એક", "અને", "છે", "હતી", "હતું", "માટે",
+    "પર", "થી", "સાથે", "કે", "પણ", "નથી",
+    # --- Kannada ---
+    "ಈ", "ಅದು", "ಒಂದು", "ಮತ್ತು", "ಅಥವಾ", "ಅಲ್ಲ", "ಇದು",
+    # --- Malayalam ---
+    "ഈ", "ഒരു", "അത്", "എന്ന", "ആണ്", "അല്ല", "മറ്റ്",
+    # --- Punjabi (Gurmukhi) ---
+    "ਇਹ", "ਇੱਕ", "ਅਤੇ", "ਦੀ", "ਦਾ", "ਦੇ", "ਨੂੰ", "ਵਿੱਚ",
+    "ਤੋਂ", "ਨਾਲ", "ਜਾਂ", "ਨਹੀਂ", "ਹੈ", "ਸੀ",
+    # --- Odia ---
+    "ଏହା", "ଏକ", "ଏବଂ", "କିମ୍ବା", "ନାହିଁ", "ଅଛି",
+    # --- Assamese ---
+    "এই", "এটা", "আৰু", "বা", "নহয়", "হয়",
+    # --- Urdu (Arabic script, shares grammar with Hindi) ---
+    "اور", "ہے", "کا", "کے", "کی", "میں", "سے", "کو",
+    "نہیں", "یہ", "وہ", "پر", "تھا", "ہیں",
+    # --- Numerals and common tokens ---
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
 })
+
+# Punctuation characters to strip from tokens (covers Latin, Devanagari, etc.)
+_PUNCT_RE = re.compile(
+    r'[।॥,.\-!?;:"\'\(\)\[\]\{\}…—–/\\@#$%^&*+=<>~`|।॥,]'
+)
 
 # Patterns that indicate obviously unsafe/adversarial input
 _UNSAFE_PATTERNS = [
@@ -91,8 +133,9 @@ def check_input(text: str) -> GuardrailResult:
     stripped = text.strip()
 
     # Reject very short transcripts — likely STT noise
-    if len(stripped) < 3:
-        return GuardrailResult(False, "Input too short (< 3 characters), likely garbled")
+    # Use 2 chars, not 3, because single-word Indic queries can be short
+    if len(stripped) < 2:
+        return GuardrailResult(False, "Input too short (< 2 characters), likely garbled")
 
     # Check for mostly non-alphanumeric content (garbled STT output)
     # Allow Indic scripts by checking for Unicode letters, not just ASCII
@@ -154,40 +197,45 @@ def check_retrieval_confidence(
 # Gate 3: Post-generation grounding check
 # ---------------------------------------------------------------------------
 
-def _extract_content_words(text: str) -> set:
-    """Extract meaningful content words from text, excluding stop words.
+def _extract_content_words(text: str) -> Set[str]:
+    r"""Extract meaningful content words from text, excluding stop words.
 
-    Lowercases everything and filters out stop words and very short tokens.
-    Works for both English and Indic text (Indic stop words are included).
+    Language-agnostic approach:
+    1. Lowercase the text
+    2. Strip punctuation characters (not \w+ regex, which breaks Indic scripts
+       by splitting at matra/vowel-sign boundaries)
+    3. Split on whitespace to get whole words
+    4. Remove stopwords
+
+    This correctly preserves Devanagari, Bengali, Tamil, Telugu, Kannada,
+    Malayalam, Gujarati, Odia, Gurmukhi, and Arabic-script words intact.
     """
-    # Split on whitespace and punctuation
-    words = re.findall(r'\w+', text.lower())
-    # Filter stop words and very short words (< 3 chars)
-    return {w for w in words if w not in _STOP_WORDS and len(w) >= 3}
+    # Strip punctuation without breaking Unicode word boundaries
+    cleaned = _PUNCT_RE.sub(' ', text.lower())
+    # Split on whitespace — preserves Indic words with matras intact
+    words = cleaned.split()
+    # Filter stopwords only (no length filter — short Indic words are valid)
+    return {w for w in words if w and w not in _STOP_WORDS}
 
 
 def check_grounding(
     generated_answer: str,
     context_text: str,
-    threshold: float = 0.15,
+    threshold: float = 0.55,
 ) -> GuardrailResult:
     """Verify the generated answer is grounded in the retrieved context.
 
-    Computes Jaccard similarity between content words in the answer and
-    content words in the context. If overlap is too low, the answer likely
-    contains hallucinated content not supported by the retrieved passages.
-
-    Why Jaccard and not something fancier? Because:
-    1. It's instantaneous (< 0.1ms) — no model inference needed
-    2. For factoid QA (MSMARCO-style), correct answers almost always share
-       key terms with their source passage
-    3. It's a conservative check — we'd rather flag borderline cases than
-       miss obvious hallucinations
+    Uses recall-based overlap (what fraction of answer words appear in the
+    context) rather than Jaccard. Jaccard unfairly penalizes short answers
+    against large contexts because the denominator (union) is dominated by
+    context words. Recall measures: "of the words the model used in its
+    answer, how many came from the context?" — which is the actual
+    grounding question.
 
     Args:
         generated_answer: The LLM-generated answer text.
         context_text: The concatenated retrieved context that was fed to the LLM.
-        threshold: Minimum Jaccard overlap (default 0.15).
+        threshold: Minimum recall overlap (default 0.3).
 
     Returns:
         GuardrailResult — passed=True if answer appears grounded.
@@ -207,16 +255,15 @@ def check_grounding(
             "No context content words to verify grounding against"
         )
 
-    # Jaccard similarity: |A ∩ B| / |A ∪ B|
-    intersection = answer_words & context_words
-    union = answer_words | context_words
-    jaccard = len(intersection) / len(union) if union else 0.0
+    # Recall: what fraction of answer words appear in the context?
+    overlap = answer_words & context_words
+    recall = len(overlap) / len(answer_words)
 
-    if jaccard < threshold:
+    if recall < threshold:
         return GuardrailResult(
             False,
             f"Generated answer appears insufficiently grounded in context "
-            f"(Jaccard overlap: {jaccard:.3f} < {threshold}). "
+            f"(recall overlap: {recall:.3f} < {threshold}). "
             f"Answer words not in context: {answer_words - context_words}"
         )
 

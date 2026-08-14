@@ -5,3 +5,5 @@ __pycache__/
 data/
 eval/latency_report*.json
 eval/audio/
+scratch_*
+sample.parquet
