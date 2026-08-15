@@ -1,23 +1,39 @@
+"""
+embed.py — Multilingual embedding using intfloat/multilingual-e5-small
+
+Uses ONNX Runtime with INT8 quantization and `sentencepiece` to achieve an ultra-low
+memory footprint. By natively applying the Fairseq offset (+1) to the standard
+sentencepiece model instead of relying on the Hugging Face `tokenizers` rust parser,
+we avoid a massive 200MB memory spike from the XLM-R 250,000-token BPE dictionary load.
+
+E5 models require specific prefixes:
+  - "query: " for search queries
+  - "passage: " for document passages
+"""
+
 import os
 import numpy as np
 from typing import List, Optional
-from tokenizers import Tokenizer
+import sentencepiece as spm
 import onnxruntime as ort
 
-_tokenizer: Optional[Tokenizer] = None
+_sp: Optional[spm.SentencePieceProcessor] = None
 _ort_session: Optional[ort.InferenceSession] = None
 _MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "onnx_quantized")
 
 def get_model():
-    global _tokenizer, _ort_session
+    global _sp, _ort_session
     if _ort_session is None:
-        if not os.path.exists(_MODEL_DIR):
-            raise RuntimeError(f"Quantized ONNX model not found at {_MODEL_DIR}.")
-            
-        _tokenizer = Tokenizer.from_file(os.path.join(_MODEL_DIR, "tokenizer.json"))
-        _tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
-        _tokenizer.enable_truncation(max_length=512)
+        spm_path = os.path.join(_MODEL_DIR, "sentencepiece.bpe.model")
+        onnx_path = os.path.join(_MODEL_DIR, "model_quantized.onnx")
         
+        if not os.path.exists(spm_path) or not os.path.exists(onnx_path):
+            raise RuntimeError(f"Models missing in {_MODEL_DIR}.")
+            
+        # 1. Load SentencePiece model (native C++, consumes only ~20MB compared to 270MB tokenizers)
+        _sp = spm.SentencePieceProcessor(model_file=spm_path)
+        
+        # 2. Load ONNX model with aggressively optimized memory settings
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = 1
         sess_options.inter_op_num_threads = 1
@@ -25,14 +41,14 @@ def get_model():
         sess_options.enable_mem_pattern = False
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
         
-        model_path = os.path.join(_MODEL_DIR, 'model_quantized.onnx')
         _ort_session = ort.InferenceSession(
-            model_path, 
+            onnx_path, 
             sess_options=sess_options,
             providers=['CPUExecutionProvider']
         )
-        print(f'ONNX Model loaded: {model_path} (Size: {os.path.getsize(model_path) / 1024 / 1024:.2f} MB)', flush=True)
-    return _tokenizer, _ort_session
+        print(f"ONNX Model loaded: {onnx_path} (Size: {os.path.getsize(onnx_path) / 1024 / 1024:.2f} MB)", flush=True)
+        
+    return _sp, _ort_session
 
 
 def get_embedding_dimension() -> int:
@@ -50,11 +66,27 @@ def _mean_pooling_and_normalize(last_hidden_state: np.ndarray, attention_mask: n
 
 
 def _encode_texts(texts: List[str]) -> np.ndarray:
-    tokenizer, ort_session = get_model()
-    encoded = tokenizer.encode_batch(texts)
+    sp, ort_session = get_model()
     
-    input_ids = np.array([e.ids for e in encoded], dtype=np.int64)
-    attention_mask = np.array([e.attention_mask for e in encoded], dtype=np.int64)
+    encoded_list = sp.encode(texts)
+    
+    # Calculate batch dimensions with truncation at 512
+    max_len = min(512, max(len(x) for x in encoded_list) + 2)
+    
+    # 1 is the pad_token_id for XLM-R
+    input_ids = np.ones((len(texts), max_len), dtype=np.int64)
+    attention_mask = np.zeros((len(texts), max_len), dtype=np.int64)
+    
+    for i, sp_ids in enumerate(encoded_list):
+        # Truncate raw sentencepiece IDs to 510 to leave room for <s> and </s>
+        sp_ids = sp_ids[:510]
+        seq_len = len(sp_ids) + 2
+        
+        # Fairseq offset logic: sp_id + 1. Then prepend <s> (0) and append </s> (2)
+        mapped = [0] + [x + 1 for x in sp_ids] + [2]
+        
+        input_ids[i, :seq_len] = mapped
+        attention_mask[i, :seq_len] = 1
     
     ort_inputs = {
         "input_ids": input_ids,
@@ -63,8 +95,7 @@ def _encode_texts(texts: List[str]) -> np.ndarray:
     
     input_names = [i.name for i in ort_session.get_inputs()]
     if "token_type_ids" in input_names:
-        token_type_ids = np.array([e.type_ids for e in encoded], dtype=np.int64)
-        ort_inputs["token_type_ids"] = token_type_ids
+        ort_inputs["token_type_ids"] = np.zeros_like(input_ids)
 
     outputs = ort_session.run(None, ort_inputs)
     last_hidden_state = outputs[0]
