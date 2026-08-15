@@ -1,3 +1,13 @@
+---
+title: Voice Enabled RAG For Indic Languages
+emoji: 🎙️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Voice-Enabled RAG System for Indic Languages
 
 A production-quality Retrieval-Augmented Generation pipeline that handles voice and text input in Indian languages, retrieves relevant passages from the `ai4bharat/MSMARCO-XI` dataset using hybrid dense+sparse retrieval, and generates grounded answers with source citations using Groq-hosted LLaMA 3.1 8B Instant.
@@ -6,7 +16,7 @@ A production-quality Retrieval-Augmented Generation pipeline that handles voice 
 
 ```mermaid
 graph LR
-    A["🎤 Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2)"]
+    A["🎤 Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2.5)"]
     B --> C["Input Guardrail"]
     T["📝 Text Query"] --> C
     C --> D["Hybrid Retrieval<br/>(Qdrant + BM25 + RRF)"]

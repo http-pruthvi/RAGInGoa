@@ -1,0 +1,10 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+.env
+data/parquet_cache/
+eval/latency_report*.json
+scratch_*
+sample.parquet
+*.tmp

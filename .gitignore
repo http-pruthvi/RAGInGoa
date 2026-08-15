@@ -2,8 +2,9 @@
 __pycache__/
 *.pyc
 .env
-data/
+data/parquet_cache/
 eval/latency_report*.json
-eval/audio/
 scratch_*
 sample.parquet
+.lock
+*.lock
