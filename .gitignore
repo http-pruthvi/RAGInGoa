@@ -8,3 +8,5 @@ scratch_*
 sample.parquet
 .lock
 *.lock
+
+models/

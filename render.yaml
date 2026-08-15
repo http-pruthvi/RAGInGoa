@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: rag-goa
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
