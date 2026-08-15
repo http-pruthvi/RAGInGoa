@@ -39,4 +39,4 @@ USER user
 EXPOSE 10000
 
 # Start FastAPI server on port 7860
-CMD uvicorn app:app --host 0.0.0.0 --port $
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-10000}
