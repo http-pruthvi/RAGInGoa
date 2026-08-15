@@ -301,5 +301,7 @@ if not IS_HF_SPACE:
         port = int(os.environ.get("PORT", 7860))
         uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
 
-# In HF Spaces (ZeroGPU), Gradio SDK auto-discovers `demo` and launches it.
-# No uvicorn needed — the Gradio UI + built-in API are served directly.
+# In HF Spaces (ZeroGPU), launch Gradio directly to keep the process alive.
+# Gradio's internal server handles the UI + built-in API on the port ZeroGPU expects.
+if IS_HF_SPACE:
+    demo.launch()
