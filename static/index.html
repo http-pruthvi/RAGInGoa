@@ -192,7 +192,7 @@
         .loading {
             display: none;
             text-align: center;
-            font-family: 'Kalam', cursive;
+            font-family: "Kalam", cursive;
             font-size: 1.5rem;
             color: var(--goa-pink);
             margin: 20px 0;
@@ -294,7 +294,7 @@
 <body>
 
 <div class="header">
-    <div class="date-line">GOA, INDIA • 28 - 31 OCT 2026</div>
+    <div class="date-line">GOA, INDIA &bull; 28 - 31 OCT 2026</div>
     <h1 class="hh-title">HACKER HOUSE<span class="goa-title">Goa</span></h1>
 </div>
 
@@ -360,7 +360,6 @@
             sampleRate = audioContext.sampleRate;
             mediaStreamSource = audioContext.createMediaStreamSource(stream);
             
-            // Create a ScriptProcessorNode to capture raw PCM audio
             recorderNode = audioContext.createScriptProcessor(4096, 1, 1);
             audioData = [];
 
@@ -396,7 +395,6 @@
     }
 
     function exportWAV() {
-        // Flatten audioData arrays
         let totalLength = 0;
         for (let i = 0; i < audioData.length; i++) {
             totalLength += audioData[i].length;
@@ -409,38 +407,32 @@
             offset += audioData[i].length;
         }
 
-        // Convert Float32 to Int16
         let intData = new Int16Array(pcmData.length);
         for (let i = 0; i < pcmData.length; i++) {
             let s = Math.max(-1, Math.min(1, pcmData[i]));
             intData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
-        // Create WAV header
         const numChannels = 1;
         const byteRate = sampleRate * numChannels * 2;
         const blockAlign = numChannels * 2;
         const buffer = new ArrayBuffer(44 + intData.length * 2);
         const view = new DataView(buffer);
 
-        // RIFF chunk descriptor
         writeString(view, 0, 'RIFF');
         view.setUint32(4, 36 + intData.length * 2, true);
         writeString(view, 8, 'WAVE');
-        // fmt sub-chunk
         writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true); // subchunk1size (16 for PCM)
-        view.setUint16(20, 1, true); // audio format (1 = PCM)
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
         view.setUint16(22, numChannels, true);
         view.setUint32(24, sampleRate, true);
         view.setUint32(28, byteRate, true);
         view.setUint16(32, blockAlign, true);
-        view.setUint16(34, 16, true); // bits per sample
-        // data sub-chunk
+        view.setUint16(34, 16, true);
         writeString(view, 36, 'data');
         view.setUint32(40, intData.length * 2, true);
 
-        // Write PCM samples
         let offsetData = 44;
         for (let i = 0; i < intData.length; i++, offsetData += 2) {
             view.setInt16(offsetData, intData[i], true);
@@ -504,7 +496,7 @@
             data.retrieved_chunks.forEach((c, idx) => {
                 const chunkDiv = document.createElement('div');
                 chunkDiv.className = 'chunk';
-                chunkDiv.innerHTML = <strong>[] ID: </strong><br><span style="color:#666;font-size:0.8rem">Score:  | Strategy: </span><br><br>;
+                chunkDiv.innerHTML = `<strong>[${idx+1}] ID: ${c.doc_id}</strong><br><span style="color:#666;font-size:0.8rem">Score: ${c.score.toFixed(3)} | Strategy: ${c.strategy}</span><br><br>${c.text}`;
                 chunksCont.appendChild(chunkDiv);
             });
             document.querySelector('.chunks-toggle').style.display = 'block';
@@ -520,9 +512,9 @@
             let total = 0;
             for (const [stage, ms] of Object.entries(data.stage_timings)) {
                 total += ms;
-                latGrid.innerHTML += <div class="latency-item"><div style="font-size:0.8rem;color:#666"></div><span class="latency-val">ms</span></div>;
+                latGrid.innerHTML += `<div class="latency-item"><div style="font-size:0.8rem;color:#666">${stage.replace('_', ' ')}</div><span class="latency-val">${ms.toFixed(0)}ms</span></div>`;
             }
-            latGrid.innerHTML = <div class="latency-item"><div style="font-size:0.8rem;color:#666;font-weight:bold">TOTAL BACKEND</div><span class="latency-val">ms</span></div> + latGrid.innerHTML;
+            latGrid.innerHTML = `<div class="latency-item"><div style="font-size:0.8rem;color:#666;font-weight:bold">TOTAL BACKEND</div><span class="latency-val">${total.toFixed(0)}ms</span></div>` + latGrid.innerHTML;
         }
     }
 
@@ -562,6 +554,5 @@
         }
     }
 </script>
-
 </body>
 </html>
