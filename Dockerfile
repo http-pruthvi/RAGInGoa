@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user matching Hugging Face Spaces convention (uid 1000)
 RUN useradd -m -u 1000 user
 ENV HOME=/home/user \
+    OMP_NUM_THREADS=1 \
+    OMP_WAIT_POLICY=PASSIVE \
     PATH=/home/user/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
@@ -37,4 +39,4 @@ USER user
 EXPOSE 10000
 
 # Start FastAPI server on port 7860
-CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-10000}
+CMD uvicorn app:app --host 0.0.0.0 --port $

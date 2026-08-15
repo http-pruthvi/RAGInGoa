@@ -44,10 +44,15 @@ def get_model():
         sess_options.enable_cpu_mem_arena = False
         sess_options.enable_mem_pattern = False
         # Optional: Disable optimizations that cache additional tensors
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
         
+        model_path = os.path.join(_MODEL_DIR, 'model_quantized.onnx')
         _ort_session = ort.InferenceSession(
-            os.path.join(_MODEL_DIR, "model_quantized.onnx"), 
+            model_path, 
+            sess_options=sess_options,
+            providers=['CPUExecutionProvider']
+        )
+        print(f'ONNX Model loaded: {model_path} (Size: {os.path.getsize(model_path) / 1024 / 1024:.2f} MB)', flush=True), 
             sess_options=sess_options,
             providers=["CPUExecutionProvider"]
         )
