@@ -9,4 +9,3 @@ sample.parquet
 .lock
 *.lock
 
-models/
