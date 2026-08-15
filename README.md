@@ -1,9 +1,10 @@
----
+﻿---
 title: Voice Enabled RAG For Indic Languages
 emoji: 🎙️
 colorFrom: blue
-colorTo: indigo
-sdk: gradio
+colorTo: purple
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 
@@ -15,14 +16,14 @@ A production-quality Retrieval-Augmented Generation pipeline that handles voice 
 
 ```mermaid
 graph LR
-    A["🎤 Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2.5)"]
+    A["ðŸŽ¤ Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2.5)"]
     B --> C["Input Guardrail"]
-    T["📝 Text Query"] --> C
+    T["ðŸ“ Text Query"] --> C
     C --> D["Hybrid Retrieval<br/>(Qdrant + BM25 + RRF)"]
     D --> E["Confidence Guardrail"]
     E --> F["Generation<br/>(Groq LLaMA 3.1 8B)"]
     F --> G["Grounding Guardrail"]
-    G --> H["✅ Response"]
+    G --> H["âœ… Response"]
 
     style A fill:#e1f5fe
     style T fill:#e1f5fe
@@ -35,38 +36,38 @@ graph LR
 ### Data Flow
 
 ```
-Voice audio ──► Sarvam STT ──► text query ──┐
-                                             │
-Text query ──────────────────────────────────┤
-                                             ▼
+Voice audio â”€â”€â–º Sarvam STT â”€â”€â–º text query â”€â”€â”
+                                             â”‚
+Text query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+                                             â–¼
                                     Input Guardrail
                                     (reject garbled/unsafe)
-                                             │
-                                             ▼
-                                ┌────────────┴────────────┐
-                                │    Hybrid Retrieval      │
-                                │  ┌──────┐  ┌──────┐    │
-                                │  │Qdrant│  │ BM25 │    │
-                                │  │Dense │  │Sparse│    │
-                                │  └──┬───┘  └──┬───┘    │
-                                │     └────┬────┘         │
-                                │    RRF Fusion            │
-                                └────────────┬────────────┘
-                                             │
-                                             ▼
+                                             â”‚
+                                             â–¼
+                                â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                â”‚    Hybrid Retrieval      â”‚
+                                â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”    â”‚
+                                â”‚  â”‚Qdrantâ”‚  â”‚ BM25 â”‚    â”‚
+                                â”‚  â”‚Dense â”‚  â”‚Sparseâ”‚    â”‚
+                                â”‚  â””â”€â”€â”¬â”€â”€â”€â”˜  â””â”€â”€â”¬â”€â”€â”€â”˜    â”‚
+                                â”‚     â””â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”˜         â”‚
+                                â”‚    RRF Fusion            â”‚
+                                â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                             â”‚
+                                             â–¼
                                     Confidence Guardrail
                                     (reject weak matches)
-                                             │
-                                             ▼
+                                             â”‚
+                                             â–¼
                               Groq LLaMA 3.1 8B Generation
                               (context-only, cite sources)
-                                             │
-                                             ▼
+                                             â”‚
+                                             â–¼
                                     Grounding Guardrail
                                 (reject hallucinated answers)
-                                             │
-                                             ▼
-                                       ✅ Final Answer
+                                             â”‚
+                                             â–¼
+                                       âœ… Final Answer
 ```
 
 ## Technical Choices & Rationale
@@ -78,7 +79,7 @@ Text query ───────────────────────
 
 ### Embedding: `intfloat/multilingual-e5-small`
 - **Why**: 118M parameters, strong multilingual benchmarks across Indic scripts. Small footprint and fast CPU inference (~20ms/query).
-- **E5 prefix protocol**: Queries prefixed with `query: `, passages with `passage: ` — asymmetric encoding improves retrieval quality.
+- **E5 prefix protocol**: Queries prefixed with `query: `, passages with `passage: ` â€” asymmetric encoding improves retrieval quality.
 - **Normalization**: L2-normalized embeddings so inner product = cosine similarity.
 
 ### Vector DB: Qdrant (Local Disk Persistence)
@@ -87,19 +88,19 @@ Text query ───────────────────────
 - **Warmup**: Bilingual startup warmup eliminates cold-start and JIT latency.
 
 ### Sparse Retrieval: BM25 (`rank_bm25`)
-- **Why**: Complements dense retrieval by catching exact keyword matches that embeddings miss — especially important for Indic languages with rare terms, proper nouns, and numbers.
+- **Why**: Complements dense retrieval by catching exact keyword matches that embeddings miss â€” especially important for Indic languages with rare terms, proper nouns, and numbers.
 - **Pre-built**: BM25 index serialized with pickle, zero initialization latency.
 
 ### Fusion: Reciprocal Rank Fusion (RRF)
 - **Why**: Rank-based fusion that doesn't require score calibration between dense cosine similarities and unbounded BM25 scores.
-- **Formula**: `score(d) = Σ 1/(60 + rank_i(d))` — k=60 standard constant.
+- **Formula**: `score(d) = Î£ 1/(60 + rank_i(d))` â€” k=60 standard constant.
 - **Advantage**: No extra model call, zero calibration latency.
 
 ### Chunking: Three Complementary Strategies
 1. **Fixed-size** (~200 words, 20% overlap): Simple baseline, no assumptions about text structure.
-2. **Sentence-window**: Individual sentences for precise retrieval, ±2 neighbors as context for generation.
+2. **Sentence-window**: Individual sentences for precise retrieval, Â±2 neighbors as context for generation.
 3. **Hierarchical parent/child**: ~120-word children for retrieval, ~500-word parents for generation context.
-- All strategies run and their chunks are scored together — RRF naturally picks the best match.
+- All strategies run and their chunks are scored together â€” RRF naturally picks the best match.
 
 ### Guardrails: Three Independent Gates, All Local
 1. **Input validation**: Reject empty, garbled (STT noise), or prompt-injection attempts.
@@ -108,7 +109,7 @@ Text query ───────────────────────
 - **Why local**: No extra LLM calls, sub-millisecond evaluation (<0.5ms), no added latency.
 
 ### Generation: Groq (`llama-3.1-8b-instant`)
-- **Why Groq**: Low-latency LPU hardware providing 200–500ms inference.
+- **Why Groq**: Low-latency LPU hardware providing 200â€“500ms inference.
 - **Model Choice**: `llama-3.1-8b-instant` provides high instruction compliance with citations, generous rate limits (500k TPD, 30k TPM), and sub-500ms generation.
 - **System Prompt**: Strictly constrains answers to context only, explicit refusal when unsure, and mandatory source citations (`[1]`, `[2]`).
 
@@ -179,7 +180,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ```bash
 curl -X POST http://localhost:8000/query/text \
   -H "Content-Type: application/json" \
-  -d '{"query": "मैनहट्टन परियोजना की सफलता का तुरंत क्या प्रभाव पड़ा?"}'
+  -d '{"query": "à¤®à¥ˆà¤¨à¤¹à¤Ÿà¥à¤Ÿà¤¨ à¤ªà¤°à¤¿à¤¯à¥‹à¤œà¤¨à¤¾ à¤•à¥€ à¤¸à¤«à¤²à¤¤à¤¾ à¤•à¤¾ à¤¤à¥à¤°à¤‚à¤¤ à¤•à¥à¤¯à¤¾ à¤ªà¥à¤°à¤­à¤¾à¤µ à¤ªà¤¡à¤¼à¤¾?"}'
 ```
 
 **Voice query:**
@@ -202,9 +203,9 @@ python -m eval.run_latency_test \
   --output eval/latency_report.json
 ```
 
-## Latency Breakdown — Honest Assessment
+## Latency Breakdown â€” Honest Assessment
 
-### What's under 200ms ✅
+### What's under 200ms âœ…
 
 The **local computation stages** (chunking + hybrid retrieval + guardrail evaluation) are consistently under 100ms:
 
@@ -234,12 +235,12 @@ External API calls involve network round-trips:
 ```json
 {
   "status": "success",
-  "answer": "मैनहट्टन परियोजना की सफलता का तुरंत प्रभाव सैकड़ों हजारों निर्दोष जीवन का विनाश था [1,2].",
-  "query_text": "मैनहट्टन परियोजना की सफलता का तुरंत क्या प्रभाव पड़ा?",
+  "answer": "à¤®à¥ˆà¤¨à¤¹à¤Ÿà¥à¤Ÿà¤¨ à¤ªà¤°à¤¿à¤¯à¥‹à¤œà¤¨à¤¾ à¤•à¥€ à¤¸à¤«à¤²à¤¤à¤¾ à¤•à¤¾ à¤¤à¥à¤°à¤‚à¤¤ à¤ªà¥à¤°à¤­à¤¾à¤µ à¤¸à¥ˆà¤•à¤¡à¤¼à¥‹à¤‚ à¤¹à¤œà¤¾à¤°à¥‹à¤‚ à¤¨à¤¿à¤°à¥à¤¦à¥‹à¤· à¤œà¥€à¤µà¤¨ à¤•à¤¾ à¤µà¤¿à¤¨à¤¾à¤¶ à¤¥à¤¾ [1,2].",
+  "query_text": "à¤®à¥ˆà¤¨à¤¹à¤Ÿà¥à¤Ÿà¤¨ à¤ªà¤°à¤¿à¤¯à¥‹à¤œà¤¨à¤¾ à¤•à¥€ à¤¸à¤«à¤²à¤¤à¤¾ à¤•à¤¾ à¤¤à¥à¤°à¤‚à¤¤ à¤•à¥à¤¯à¤¾ à¤ªà¥à¤°à¤­à¤¾à¤µ à¤ªà¤¡à¤¼à¤¾?",
   "retrieved_chunks": [
     {
       "chunk_id": "hi_1185869_0_fixed_0",
-      "text": "मैनहट्टन परियोजना की सफलता का तत्काल प्रभाव...",
+      "text": "à¤®à¥ˆà¤¨à¤¹à¤Ÿà¥à¤Ÿà¤¨ à¤ªà¤°à¤¿à¤¯à¥‹à¤œà¤¨à¤¾ à¤•à¥€ à¤¸à¤«à¤²à¤¤à¤¾ à¤•à¤¾ à¤¤à¤¤à¥à¤•à¤¾à¤² à¤ªà¥à¤°à¤­à¤¾à¤µ...",
       "context_text": "...",
       "doc_id": "hi_1185869_0",
       "strategy": "fixed",
