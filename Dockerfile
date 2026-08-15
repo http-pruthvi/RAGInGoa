@@ -22,7 +22,7 @@ WORKDIR /app
 COPY --chown=user:user requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt && \
-    python scripts/convert_to_onnx.py && rm -rf models/onnx 
+    echo "Using pre-quantized ONNX model from repository" 
 
 # Copy application source code and pre-built index data (data/qdrant_db and data/bm25.pkl)
 COPY --chown=user:user . /app
