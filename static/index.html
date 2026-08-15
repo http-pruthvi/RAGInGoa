@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice RAG Demo - Hacker House Goa</title>
+    <style>
+        :root {
+            --bg-dark: #08070d;
+            --bg-card: #120c1e;
+            --primary-pink: #ff3d6e;
+            --primary-orange: #ff8a3d;
+            --signal-lime: #baff3d;
+            --glow-violet: #8b5cf6;
+            --paper-white: #f3efe6;
+            --glass-bg: rgba(18, 12, 30, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --error-red: #ff3d6e;
+            --warning-amber: #ff8a3d;
+            --success-green: #baff3d;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--paper-white);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-pink);
+            margin-top: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.5rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            color: white;
+            border-radius: 8px;
+            font-size: 1rem;
+            min-width: 200px;
+        }
+
+        select {
+            padding: 12px;
+            background: var(--bg-dark);
+            border: 1px solid var(--glass-border);
+            color: white;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: var(--glow-violet);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #voiceBtn {
+            background: var(--primary-pink);
+        }
+        #voiceBtn.recording {
+            animation: pulse 1.5s infinite;
+            background: #cc0000;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+            color: var(--primary-orange);
+            font-weight: bold;
+        }
+
+        .result-box {
+            display: none;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+        }
+        .status-success { background: var(--success-green); color: black; }
+        .status-refused { background: var(--warning-amber); color: black; }
+        .status-error { background: var(--error-red); color: white; }
+
+        .label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 16px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .transcription {
+            font-style: italic;
+            color: #ddd;
+            border-left: 3px solid var(--glow-violet);
+            padding-left: 12px;
+        }
+
+        .answer {
+            font-size: 1.1rem;
+            line-height: 1.5;
+            color: var(--paper-white);
+        }
+
+        .chunks-toggle {
+            background: none;
+            border: none;
+            color: var(--primary-orange);
+            padding: 0;
+            margin-top: 16px;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 0.9rem;
+        }
+
+        .chunks-container {
+            display: none;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #bbb;
+        }
+        .chunk {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border-left: 2px solid var(--primary-orange);
+        }
+
+        .latency-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+        .latency-item {
+            background: rgba(0,0,0,0.3);
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .latency-val {
+            font-weight: bold;
+            color: var(--signal-lime);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Voice RAG Demo</h1>
+    
+    <div class="controls">
+        <select id="langSelect">
+            <option value="en-US">English</option>
+            <option value="hi-IN">Hindi</option>
+        </select>
+        <input type="text" id="textInput" placeholder="Type your question here...">
+        <button id="askBtn" onclick="submitText()">Ask</button>
+        <button id="voiceBtn" onclick="toggleRecording()">?? Record</button>
+    </div>
+
+    <div id="loading" class="loading">Thinking... ?</div>
+
+    <div id="resultBox" class="result-box">
+        <div id="statusBadge" class="status-badge"></div>
+        
+        <div class="label">Query</div>
+        <div id="transcriptionBox" class="transcription"></div>
+
+        <div class="label">Answer</div>
+        <div id="answerBox" class="answer"></div>
+
+        <button class="chunks-toggle" onclick="toggleChunks()">[+] Show Grounding Source Chunks</button>
+        <div id="chunksContainer" class="chunks-container"></div>
+
+        <div class="label">Latency Breakdown</div>
+        <div id="latencyGrid" class="latency-grid"></div>
+    </div>
+</div>
+
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    async function toggleRecording() {
+        if (!isRecording) {
+            startRecording();
+        } else {
+            stopRecording();
+        }
+    }
+
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = e => {
+                if(e.data.size > 0) audioChunks.push(e.data);
+            };
+            
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                await submitVoice(audioBlob);
+                stream.getTracks().forEach(t => t.stop());
+            };
+            
+            mediaRecorder.start();
+            isRecording = true;
+            document.getElementById('voiceBtn').classList.add('recording');
+            document.getElementById('voiceBtn').innerText = "? Stop Recording";
+        } catch (err) {
+            alert("Error accessing microphone: " + err);
+        }
+    }
+
+    function stopRecording() {
+        if(mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            isRecording = false;
+            document.getElementById('voiceBtn').classList.remove('recording');
+            document.getElementById('voiceBtn').innerText = "?? Record";
+        }
+    }
+
+    function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('resultBox').style.display = 'none';
+        document.getElementById('askBtn').disabled = true;
+        document.getElementById('voiceBtn').disabled = true;
+    }
+
+    function hideLoading() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('resultBox').style.display = 'block';
+        document.getElementById('askBtn').disabled = false;
+        document.getElementById('voiceBtn').disabled = false;
+    }
+
+    function toggleChunks() {
+        const cont = document.getElementById('chunksContainer');
+        const btn = document.querySelector('.chunks-toggle');
+        if (cont.style.display === 'block') {
+            cont.style.display = 'none';
+            btn.innerText = "[+] Show Grounding Source Chunks";
+        } else {
+            cont.style.display = 'block';
+            btn.innerText = "[-] Hide Grounding Source Chunks";
+        }
+    }
+
+    function displayResult(data) {
+        hideLoading();
+        
+        // Set Status
+        const badge = document.getElementById('statusBadge');
+        badge.innerText = data.status;
+        badge.className = 'status-badge';
+        if (data.status === 'success') {
+            badge.classList.add('status-success');
+        } else if (data.status.includes('error')) {
+            badge.classList.add('status-error');
+        } else {
+            badge.classList.add('status-refused');
+        }
+
+        // Set Text
+        document.getElementById('transcriptionBox').innerText = data.query_text || (data.error_message ? "Error/Invalid" : "Empty");
+        
+        // Set Answer
+        let answerText = data.answer;
+        if (!answerText && data.error_message) answerText = data.error_message;
+        document.getElementById('answerBox').innerText = answerText;
+
+        // Set Chunks
+        const chunksCont = document.getElementById('chunksContainer');
+        chunksCont.innerHTML = '';
+        if (data.retrieved_chunks && data.retrieved_chunks.length > 0) {
+            data.retrieved_chunks.forEach((c, idx) => {
+                const chunkDiv = document.createElement('div');
+                chunkDiv.className = 'chunk';
+                chunkDiv.innerHTML = <strong>[] Doc: </strong> (Score: , Strategy: )<br>;
+                chunksCont.appendChild(chunkDiv);
+            });
+            document.querySelector('.chunks-toggle').style.display = 'block';
+            chunksCont.style.display = 'none';
+            document.querySelector('.chunks-toggle').innerText = "[+] Show Grounding Source Chunks";
+        } else {
+            document.querySelector('.chunks-toggle').style.display = 'none';
+        }
+
+        // Set Latency
+        const latGrid = document.getElementById('latencyGrid');
+        latGrid.innerHTML = '';
+        if (data.stage_timings) {
+            let total = 0;
+            for (const [stage, ms] of Object.entries(data.stage_timings)) {
+                total += ms;
+                latGrid.innerHTML += <div class="latency-item"><br><span class="latency-val">ms</span></div>;
+            }
+            latGrid.innerHTML = <div class="latency-item">Total Backend<br><span class="latency-val">ms</span></div> + latGrid.innerHTML;
+        }
+    }
+
+    async function submitText() {
+        const text = document.getElementById('textInput').value.trim();
+        if(!text) return;
+        const lang = document.getElementById('langSelect').value;
+
+        showLoading();
+        try {
+            const res = await fetch('/query/text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: text, language: lang })
+            });
+            const data = await res.json();
+            displayResult(data);
+        } catch(e) {
+            displayResult({status: 'error', error_message: e.toString()});
+        }
+    }
+
+    async function submitVoice(audioBlob) {
+        const lang = document.getElementById('langSelect').value;
+        const fd = new FormData();
+        fd.append('file', audioBlob, 'recording.wav');
+        fd.append('language', lang);
+
+        showLoading();
+        try {
+            const res = await fetch('/query/voice', {
+                method: 'POST',
+                body: fd
+            });
+            const data = await res.json();
+            displayResult(data);
+        } catch(e) {
+            displayResult({status: 'error', error_message: e.toString()});
+        }
+    }
+</script>
+
+</body>
+</html>
