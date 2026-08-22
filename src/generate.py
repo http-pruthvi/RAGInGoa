@@ -25,7 +25,7 @@ Your JSON MUST strictly adhere to this schema:
   "has_sufficient_context": true or false
 }"""
 
-_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+_MODEL = os.environ.get("GROQ_MODEL", "llama3-8b-8192")
 
 def _get_api_key() -> str:
     key = os.environ.get("GROQ_API_KEY")
