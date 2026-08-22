@@ -1,4 +1,4 @@
-﻿---
+---
 title: Voice Enabled RAG For Indic Languages
 emoji: 🎙️
 colorFrom: blue
@@ -10,20 +10,20 @@ pinned: false
 
 # Voice-Enabled RAG System for Indic Languages
 
-A production-quality Retrieval-Augmented Generation pipeline that handles voice and text input in Indian languages, retrieves relevant passages from the `ai4bharat/MSMARCO-XI` dataset using hybrid dense+sparse retrieval, and generates grounded answers with source citations using Groq-hosted LLaMA 3.1 8B Instant.
+A production-quality Retrieval-Augmented Generation pipeline that handles voice and text input in Indian languages, retrieves relevant passages from the `ai4bharat/MSMARCO-XI` dataset using hybrid dense+sparse retrieval, and generates grounded answers with source citations using Groq-hosted LLMs (default `openai/gpt-oss-20b`).
 
 ## Pipeline Architecture
 
 ```mermaid
 graph LR
-    A["ðŸŽ¤ Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2.5)"]
+    A["🎙️ Voice Audio"] --> B["STT<br/>(Sarvam saarika:v2.5)"]
     B --> C["Input Guardrail"]
-    T["ðŸ“ Text Query"] --> C
+    T["📖 Text Query"] --> C
     C --> D["Hybrid Retrieval<br/>(Qdrant + BM25 + RRF)"]
     D --> E["Confidence Guardrail"]
-    E --> F["Generation<br/>(Groq LLaMA 3.1 8B)"]
+    E --> F["Generation<br/>(Groq LLM)"]
     F --> G["Grounding Guardrail"]
-    G --> H["âœ… Response"]
+    G --> H["✅ Response"]
 
     style A fill:#e1f5fe
     style T fill:#e1f5fe
@@ -36,38 +36,38 @@ graph LR
 ### Data Flow
 
 ```
-Voice audio â”€â”€â–º Sarvam STT â”€â”€â–º text query â”€â”€â”
-                                             â”‚
-Text query â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
-                                             â–¼
+Voice audio ──► Sarvam STT ──► text query ──┐
+                                            │
+Text query ─────────────────────────────────┤
+                                            ▼
                                     Input Guardrail
                                     (reject garbled/unsafe)
-                                             â”‚
-                                             â–¼
-                                â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                â”‚    Hybrid Retrieval      â”‚
-                                â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”    â”‚
-                                â”‚  â”‚Qdrantâ”‚  â”‚ BM25 â”‚    â”‚
-                                â”‚  â”‚Dense â”‚  â”‚Sparseâ”‚    â”‚
-                                â”‚  â””â”€â”€â”¬â”€â”€â”€â”˜  â””â”€â”€â”¬â”€â”€â”€â”˜    â”‚
-                                â”‚     â””â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”˜         â”‚
-                                â”‚    RRF Fusion            â”‚
-                                â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                             â”‚
-                                             â–¼
+                                            │
+                                            ▼
+                                ┌───────────┬──────────────────┐
+                                │    Hybrid Retrieval      │
+                                │  ┌──────┐  ┌──────┐    │
+                                │  │Qdrant│  │ BM25 │    │
+                                │  │Dense │  │Sparse│    │
+                                │  └────┬─┘  └────┬─┘    │
+                                │       └────┬────┘      │
+                                │    RRF Fusion            │
+                                └───────────┬──────────────┘
+                                            │
+                                            ▼
                                     Confidence Guardrail
                                     (reject weak matches)
-                                             â”‚
-                                             â–¼
-                              Groq LLaMA 3.1 8B Generation
+                                            │
+                                            ▼
+                              Groq LLM Generation
                               (context-only, cite sources)
-                                             â”‚
-                                             â–¼
+                                            │
+                                            ▼
                                     Grounding Guardrail
                                 (reject hallucinated answers)
-                                             â”‚
-                                             â–¼
-                                       âœ… Final Answer
+                                            │
+                                            ▼
+                                       ✅ Final Answer
 ```
 
 ## Technical Choices & Rationale
@@ -79,7 +79,7 @@ Text query â”€â”€â”€â”€â”€â”€â”€â”€â”
 
 ### Embedding: `intfloat/multilingual-e5-small`
 - **Why**: 118M parameters, strong multilingual benchmarks across Indic scripts. Small footprint and fast CPU inference (~20ms/query).
-- **E5 prefix protocol**: Queries prefixed with `query: `, passages with `passage: ` â€” asymmetric encoding improves retrieval quality.
+- **E5 prefix protocol**: Queries prefixed with `query: `, passages with `passage: ` — asymmetric encoding improves retrieval quality.
 - **Normalization**: L2-normalized embeddings so inner product = cosine similarity.
 
 ### Vector DB: Qdrant (Local Disk Persistence)
@@ -88,19 +88,19 @@ Text query â”€â”€â”€â”€â”€â”€â”€â”€â”
 - **Warmup**: Bilingual startup warmup eliminates cold-start and JIT latency.
 
 ### Sparse Retrieval: BM25 (`rank_bm25`)
-- **Why**: Complements dense retrieval by catching exact keyword matches that embeddings miss â€” especially important for Indic languages with rare terms, proper nouns, and numbers.
+- **Why**: Complements dense retrieval by catching exact keyword matches that embeddings miss — especially important for Indic languages with rare terms, proper nouns, and numbers.
 - **Pre-built**: BM25 index serialized with pickle, zero initialization latency.
 
 ### Fusion: Reciprocal Rank Fusion (RRF)
 - **Why**: Rank-based fusion that doesn't require score calibration between dense cosine similarities and unbounded BM25 scores.
-- **Formula**: `score(d) = Î£ 1/(60 + rank_i(d))` â€” k=60 standard constant.
+- **Formula**: `score(d) = Σ 1/(60 + rank_i(d))` — k=60 standard constant.
 - **Advantage**: No extra model call, zero calibration latency.
 
 ### Chunking: Three Complementary Strategies
 1. **Fixed-size** (~200 words, 20% overlap): Simple baseline, no assumptions about text structure.
-2. **Sentence-window**: Individual sentences for precise retrieval, Â±2 neighbors as context for generation.
+2. **Sentence-window**: Individual sentences for precise retrieval, ±2 neighbors as context for generation.
 3. **Hierarchical parent/child**: ~120-word children for retrieval, ~500-word parents for generation context.
-- All strategies run and their chunks are scored together â€” RRF naturally picks the best match.
+- All strategies run and their chunks are scored together — RRF naturally picks the best match.
 
 ### Guardrails: Three Independent Gates, All Local
 1. **Input validation**: Reject empty, garbled (STT noise), or prompt-injection attempts.
@@ -108,9 +108,9 @@ Text query â”€â”€â”€â”€â”€â”€â”€â”€â”
 3. **Grounding check**: Verify answer content words are grounded in retrieved context via recall-based lexical overlap across Indic and Latin scripts, catching hallucinations.
 - **Why local**: No extra LLM calls, sub-millisecond evaluation (<0.5ms), no added latency.
 
-### Generation: Groq (`llama-3.1-8b-instant`)
-- **Why Groq**: Low-latency LPU hardware providing 200â€“500ms inference.
-- **Model Choice**: `llama-3.1-8b-instant` provides high instruction compliance with citations, generous rate limits (500k TPD, 30k TPM), and sub-500ms generation.
+### Generation: Groq (`openai/gpt-oss-20b`)
+- **Why Groq**: Low-latency LPU hardware providing 200–500ms inference.
+- **Model Choice**: `openai/gpt-oss-20b` (configurable via `GROQ_MODEL`) provides high instruction compliance with citations, generous rate limits, and sub-500ms generation.
 - **System Prompt**: Strictly constrains answers to context only, explicit refusal when unsure, and mandatory source citations (`[1]`, `[2]`).
 
 ## Project Structure
