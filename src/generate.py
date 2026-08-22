@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import logging
@@ -16,7 +17,7 @@ _SYSTEM_PROMPT = """You are a helpful assistant that answers questions ONLY base
 
 1. ONLY use information from the provided context passages to answer the question.
 2. If the provided context does not contain enough information to answer the question, you MUST set has_sufficient_context to false.
-3. You MUST output your response in valid JSON format.
+3. You MUST output your response as a single valid JSON object and nothing else. No markdown, no explanation, just the JSON object.
 
 Your JSON MUST strictly adhere to this schema:
 {
@@ -54,15 +55,41 @@ def _format_context(chunks: List[Chunk], max_chunks: int = 5) -> str:
         parts.append(f"[{i}] {text}")
     return "\n\n".join(parts)
 
+
+def _extract_json(text: str) -> Optional[Dict[str, Any]]:
+    """Try to parse JSON from model output, handling markdown fences."""
+    text = text.strip()
+    # Direct parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Strip markdown ```json ... ``` fences
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Find first { ... } block
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def generate_answer(
     query: str,
     chunks: List[Chunk],
-    max_retries: int = 1,
+    max_retries: int = 2,
 ) -> str:
     client = _get_client()
     context = _format_context(chunks, max_chunks=3)
 
-    user_message = f"""Context passages:\n{context}\n\nQuestion: {query}\n\nAnswer the question using ONLY the context passages above. Respond in JSON."""
+    user_message = f"""Context passages:\n{context}\n\nQuestion: {query}\n\nAnswer the question using ONLY the context passages above. Respond with a single JSON object only."""
 
     last_error = "Unknown error"
 
@@ -71,7 +98,6 @@ def generate_answer(
             response = client.chat.completions.create(
                 model=_MODEL,
                 max_tokens=256,
-                response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
@@ -79,18 +105,21 @@ def generate_answer(
             )
             raw_text = response.choices[0].message.content
             if not raw_text:
+                if attempt < max_retries:
+                    time.sleep(0.5)
+                    continue
                 return "Error: Empty response"
-            
-            try:
-                parsed = json.loads(raw_text)
+
+            parsed = _extract_json(raw_text)
+            if parsed:
                 answer = parsed.get("answer", "")
                 citations = parsed.get("citations", [])
-                
                 if citations:
                     answer += f" \n\nUsed passage numbers: {citations}"
                 return answer
-            except json.JSONDecodeError:
-                return raw_text.strip()
+
+            # Could not parse JSON – return the raw text as-is
+            return raw_text.strip()
 
         except Exception as e:
             error_str = str(e)
@@ -98,6 +127,9 @@ def generate_answer(
                 time.sleep(1.0)
                 continue
             elif "timeout" in error_str.lower() and attempt < max_retries:
+                time.sleep(0.5)
+                continue
+            elif "json_validate_failed" in error_str and attempt < max_retries:
                 time.sleep(0.5)
                 continue
             last_error = error_str
